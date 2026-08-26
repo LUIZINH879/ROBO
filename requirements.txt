@@ -1,0 +1,7 @@
+python-dotenv
+pandas
+numpy
+ccxt
+sqlalchemy>=2.0
+aiosqlite
+ta
