@@ -1,7 +1,20 @@
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# Leitor embutido de .env sem depender de bibliotecas externas
+def load_env_file():
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip())
+        except Exception:
+            pass
+
+load_env_file()
 
 # Exchange
 CCXT_EXCHANGE = os.getenv("CCXT_EXCHANGE", "binance")
