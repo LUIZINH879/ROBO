@@ -1,61 +1,89 @@
-import pandas as pd
-import numpy as np
+def calculate_ema(prices, span):
+    if len(prices) < span:
+        return prices[-1] if prices else 0.0
+    alpha = 2.0 / (span + 1.0)
+    ema = prices[0]
+    for p in prices[1:]:
+        ema = p * alpha + ema * (1.0 - alpha)
+    return ema
 
-try:
-    import ta
-except ImportError:
-    ta = None
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1:
+        return 50.0
+    
+    gains = []
+    losses = []
+    for i in range(1, len(prices)):
+        delta = prices[i] - prices[i-1]
+        if delta >= 0:
+            gains.append(delta)
+            losses.append(0.0)
+        else:
+            gains.append(0.0)
+            losses.append(abs(delta))
+            
+    recent_gains = gains[-period:]
+    recent_losses = losses[-period:]
+    
+    avg_gain = sum(recent_gains) / period
+    avg_loss = sum(recent_losses) / period
+    
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
 
 class TradingStrategy:
-    def __init__(self, rsi_period=14, rsi_oversold=30, rsi_overbought=70):
+    def __init__(self, rsi_period=14, rsi_oversold=30.0, rsi_overbought=70.0):
         self.rsi_period = rsi_period
         self.rsi_oversold = rsi_oversold
         self.rsi_overbought = rsi_overbought
 
-    def analyze(self, df: pd.DataFrame) -> dict:
-        if len(df) < 30:
-            return {"signal": "HOLD", "reason": "Aguardando dados suficientes (mínimo 30 velas)", "rsi": 50, "ema9": 0, "ema21": 0}
+    def analyze(self, candles):
+        # candles é uma lista de [timestamp, open, high, low, close, volume]
+        if len(candles) < 25:
+            return {
+                "signal": "HOLD",
+                "reason": "Aguardando mais velas de histórico (mínimo 25)",
+                "rsi": 50.0,
+                "ema9": 0.0,
+                "ema21": 0.0,
+                "price": candles[-1][4] if candles else 0.0
+            }
 
-        df = df.copy()
-        
-        # Cálculo de Médias Móveis Exponenciais (EMA 9 e EMA 21)
-        df["ema9"] = df["close"].ewm(span=9, adjust=False).mean()
-        df["ema21"] = df["close"].ewm(span=21, adjust=False).mean()
+        closes = [c[4] for c in candles]
+        current_price = closes[-1]
 
-        # Cálculo do RSI
-        delta = df["close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
-        rs = gain / (loss + 1e-9)
-        df["rsi"] = 100 - (100 / (1 + rs))
+        # Médias Móveis Exponenciais
+        ema9 = calculate_ema(closes, 9)
+        ema21 = calculate_ema(closes, 21)
 
-        last_row = df.iloc[-1]
-        prev_row = df.iloc[-2]
+        # Média anterior para verificar cruzamento
+        prev_closes = closes[:-1]
+        prev_ema9 = calculate_ema(prev_closes, 9)
+        prev_ema21 = calculate_ema(prev_closes, 21)
 
-        rsi_val = float(last_row["rsi"])
-        ema9_val = float(last_row["ema9"])
-        ema21_val = float(last_row["ema21"])
-        close_val = float(last_row["close"])
+        # RSI (IFR)
+        rsi = calculate_rsi(closes, self.rsi_period)
 
-        # Lógica de Cruzamento e IFR (RSI)
-        bullish_cross = (prev_row["ema9"] <= prev_row["ema21"]) and (last_row["ema9"] > last_row["ema21"])
-        bearish_cross = (prev_row["ema9"] >= prev_row["ema21"]) and (last_row["ema9"] < last_row["ema21"])
+        bullish_cross = (prev_ema9 <= prev_ema21) and (ema9 > ema21)
+        bearish_cross = (prev_ema9 >= prev_ema21) and (ema9 < ema21)
 
         signal = "HOLD"
-        reason = "Aguardando oportunidade técnica clara"
+        reason = "Aguardando oportunidade técnica"
 
-        if bullish_cross or (rsi_val < self.rsi_oversold and close_val > ema9_val):
+        if bullish_cross or (rsi < self.rsi_oversold and current_price > ema9):
             signal = "BUY"
-            reason = f"Cruzamento de Alta (EMA9={ema9_val:.2f} > EMA21={ema21_val:.2f}) e RSI={rsi_val:.1f}"
-        elif bearish_cross or (rsi_val > self.rsi_overbought and close_val < ema9_val):
+            reason = f"Sinal de Alta (EMA9={ema9:.2f} > EMA21={ema21:.2f} | RSI={rsi:.1f})"
+        elif bearish_cross or (rsi > self.rsi_overbought and current_price < ema9):
             signal = "SELL"
-            reason = f"Cruzamento de Baixa (EMA9={ema9_val:.2f} < EMA21={ema21_val:.2f}) e RSI={rsi_val:.1f}"
+            reason = f"Sinal de Baixa (EMA9={ema9:.2f} < EMA21={ema21:.2f} | RSI={rsi:.1f})"
 
         return {
             "signal": signal,
             "reason": reason,
-            "rsi": rsi_val,
-            "ema9": ema9_val,
-            "ema21": ema21_val,
-            "price": close_val
+            "rsi": rsi,
+            "ema9": ema9,
+            "ema21": ema21,
+            "price": current_price
         }
