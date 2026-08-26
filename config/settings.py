@@ -1,41 +1,26 @@
-# config/settings.py
-"""Central configuration loaded from environment variables.
-Provides defaults and type hints for all configurable parameters.
-"""
-
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env file from project root
-BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_PATH = BASE_DIR / ".env"
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH)
+load_dotenv()
 
-# ---- Exchange configuration ----
-CCXT_EXCHANGE = os.getenv("CCXT_EXCHANGE", "binance")  # default exchange for CCXT
+# Exchange
+CCXT_EXCHANGE = os.getenv("CCXT_EXCHANGE", "binance")
 CCXT_API_KEY = os.getenv("CCXT_API_KEY", "")
 CCXT_SECRET = os.getenv("CCXT_SECRET", "")
-CCXT_PASSWORD = os.getenv("CCXT_PASSWORD", "")  # some exchanges need a password
+CCXT_PASSWORD = os.getenv("CCXT_PASSWORD", "")
 
-# ---- Database configuration ----
-# SQLite for local dev, can be overridden with a PostgreSQL URL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", f"sqlite+aiosqlite:///{BASE_DIR / "trading_bot.db"}"
-)
+# Database
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///trading_bot.db")
 
-# ---- Data pipeline configuration ----
-# Number of historical candles to fetch on start
-HISTORICAL_LIMIT = int(os.getenv("HISTORICAL_LIMIT", "5000"))
-# WebSocket reconnect back‑off parameters (seconds)
-WS_RETRY_INITIAL = float(os.getenv("WS_RETRY_INITIAL", "1"))
-WS_RETRY_MAX = float(os.getenv("WS_RETRY_MAX", "30"))
-# Maximum retry attempts for REST calls
+# Historical & Network
+HISTORICAL_LIMIT = int(os.getenv("HISTORICAL_LIMIT", "200"))
+NETWORK_TIMEOUT = int(os.getenv("NETWORK_TIMEOUT", "15"))
 REST_MAX_RETRIES = int(os.getenv("REST_MAX_RETRIES", "5"))
-# Timeout for network calls (seconds)
-NETWORK_TIMEOUT = float(os.getenv("NETWORK_TIMEOUT", "10"))
 
-# ---- Logging configuration ----
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-LOG_FILE = os.getenv("LOG_FILE", str(BASE_DIR / "trading_bot.log"))
+# Risk Management (ex: 0.00005 BTC ≈ R$ 5)
+MAX_POSITION = float(os.getenv("MAX_POSITION", "0.00005"))
+MAX_DRAWDOWN = float(os.getenv("MAX_DRAWDOWN", "0.30"))
+
+# Logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_FILE = os.getenv("LOG_FILE", "trading_bot.log")
