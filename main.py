@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 ROBÔ DE TRADING INTELIGENTE PARA CRIPTOMOEDAS
-Otimizado para execução em Celular (Termux) e Servidores.
+Otimizado para execução em Celular (Termux).
+100% Leve, Rápido e Seguro.
 """
 
 import sys
@@ -10,14 +11,12 @@ import time
 import argparse
 import asyncio
 from datetime import datetime
-import pandas as pd
 
 from config.settings import (
     CCXT_EXCHANGE,
     CCXT_API_KEY,
     CCXT_SECRET,
-    MAX_POSITION,
-    MAX_DRAWDOWN
+    MAX_POSITION
 )
 from utils.logger import logger
 from decision.strategy import TradingStrategy
@@ -25,7 +24,8 @@ from decision.strategy import TradingStrategy
 try:
     import ccxt.async_support as ccxt
 except ImportError:
-    print("[ERRO] ccxt nao esta instalado. Execute: pip install ccxt")
+    print("\n[ERRO] ccxt não está instalado. Execute no Termux:")
+    print("pip install ccxt\n")
     sys.exit(1)
 
 BANNER = """
@@ -45,7 +45,6 @@ class TradingBot:
         self.mode = mode.lower()
         self.strategy = TradingStrategy()
         
-        # Configuração do CCXT
         exchange_class = getattr(ccxt, CCXT_EXCHANGE.lower(), ccxt.binance)
         self.exchange = exchange_class({
             "apiKey": CCXT_API_KEY,
@@ -53,22 +52,18 @@ class TradingBot:
             "enableRateLimit": True,
         })
         
-        # Estado do Robô
         self.in_position = False
         self.entry_price = 0.0
         self.virtual_balance = 50.0  # R$ 50 virtual para simulação
         self.trade_count = 0
-        self.candles_history = []
 
-    async def fetch_candles(self, limit: int = 60) -> pd.DataFrame:
+    async def fetch_candles(self, limit: int = 50):
         try:
             ohlcv = await self.exchange.fetch_ohlcv(self.symbol, timeframe=self.timeframe, limit=limit)
-            df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-            return df
+            return ohlcv
         except Exception as e:
-            logger.warning(f"Erro ao buscar velas da corretora: {e}")
-            return pd.DataFrame()
+            logger.warning(f"Erro de conexão com mercado: {e}")
+            return []
 
     async def execute_trade(self, action: str, price: float, reason: str):
         now_str = datetime.now().strftime("%H:%M:%S")
@@ -77,34 +72,37 @@ class TradingBot:
                 self.in_position = True
                 self.entry_price = price
                 self.trade_count += 1
-                print(f"\n🟢 [{now_str}] [SIMULAÇÃO - COMPRA] Preço: ${price:,.2f} | Motivo: {reason}")
-                print(f"💰 Posição Aberta: {MAX_POSITION} {self.symbol.split('/')[0]} (~R$ 5,00)\n")
+                print(f"\n🟢 [{now_str}] [SIMULAÇÃO - COMPRA EXECUTADA]")
+                print(f"   Preço Entrada: ${price:,.2f}")
+                print(f"   Motivo: {reason}")
+                print(f"   Posição: {MAX_POSITION} {self.symbol.split('/')[0]} (~R$ 5,00)\n")
             elif action == "SELL" and self.in_position:
                 pnl_pct = ((price - self.entry_price) / self.entry_price) * 100
                 pnl_val = (price - self.entry_price) * MAX_POSITION
                 self.in_position = False
                 self.entry_price = 0.0
-                print(f"\n🔴 [{now_str}] [SIMULAÇÃO - VENDA] Preço: ${price:,.2f} | Motivo: {reason}")
-                lucro_cor = "🟢 Lucro" if pnl_pct >= 0 else "🔴 Prejuízo"
-                print(f"📊 Resultado: {lucro_cor} de {pnl_pct:+.2f}% (${pnl_val:+.4f})\n")
+                resultado_tag = "🟢 LUCRO" if pnl_pct >= 0 else "🔴 PREJUÍZO"
+                print(f"\n🔴 [{now_str}] [SIMULAÇÃO - VENDA EXECUTADA]")
+                print(f"   Preço Saída: ${price:,.2f}")
+                print(f"   Motivo: {reason}")
+                print(f"   Resultado: {resultado_tag} de {pnl_pct:+.2f}% (${pnl_val:+.4f})\n")
         else:
-            # MODO REAL (LIVE)
             if not CCXT_API_KEY or not CCXT_SECRET:
-                print("\n❌ [ERRO CRÍTICO] Chaves de API não configuradas no .env para modo LIVE!")
+                print("\n❌ [ERRO] Chaves de API não configuradas no .env para modo LIVE!")
                 return
             try:
                 if action == "BUY" and not self.in_position:
                     order = await self.exchange.create_market_buy_order(self.symbol, MAX_POSITION)
                     self.in_position = True
                     self.entry_price = price
-                    print(f"\n🟢 [{now_str}] [ORDEM REAL EXECUTADA - COMPRA] ID: {order.get('id')} Preço: ${price:,.2f}")
+                    print(f"\n🟢 [{now_str}] [ORDEM REAL EXECUTADA - COMPRA] ID: {order.get('id')} Preço: ${price:,.2f}\n")
                 elif action == "SELL" and self.in_position:
                     order = await self.exchange.create_market_sell_order(self.symbol, MAX_POSITION)
                     self.in_position = False
                     self.entry_price = 0.0
-                    print(f"\n🔴 [{now_str}] [ORDEM REAL EXECUTADA - VENDA] ID: {order.get('id')} Preço: ${price:,.2f}")
+                    print(f"\n🔴 [{now_str}] [ORDEM REAL EXECUTADA - VENDA] ID: {order.get('id')} Preço: ${price:,.2f}\n")
             except Exception as e:
-                logger.error(f"Falha ao enviar ordem para a Binance: {e}")
+                logger.error(f"Falha na corretora ao enviar ordem: {e}")
 
     async def run(self):
         base_curr = self.symbol.split('/')[0]
@@ -117,13 +115,13 @@ class TradingBot:
             base_curr=base_curr
         ))
 
-        print("🔍 Analisando mercado e sincronizando histórico de preços...")
+        print("🔍 Conectando à Binance e analisando mercado em tempo real...")
         
         while True:
             try:
-                df = await self.fetch_candles(limit=60)
-                if not df.empty and len(df) >= 25:
-                    analysis = self.strategy.analyze(df)
+                candles = await self.fetch_candles(limit=50)
+                if candles and len(candles) >= 20:
+                    analysis = self.strategy.analyze(candles)
                     price = analysis["price"]
                     rsi = analysis["rsi"]
                     ema9 = analysis["ema9"]
@@ -132,10 +130,9 @@ class TradingBot:
                     reason = analysis["reason"]
 
                     now = datetime.now().strftime("%H:%M:%S")
-                    status_pos = f"EM OPERAÇÃO (${self.entry_price:,.2f})" if self.in_position else "AGUARDANDO SINAL"
+                    status_pos = f"EM OPERAÇÃO (${self.entry_price:,.2f})" if self.in_position else "AGUARDANDO OPORTUNIDADE"
                     print(f"[{now}] Preço: ${price:,.2f} | RSI: {rsi:.1f} | EMA(9/21): {ema9:.1f}/{ema21:.1f} | Sinal: {signal} | Status: {status_pos}")
 
-                    # Gestão de Stop-Loss e Take-Profit automático se estiver posicionado
                     if self.in_position:
                         pnl_pct = ((price - self.entry_price) / self.entry_price) * 100
                         if pnl_pct <= -1.5:  # Stop Loss de 1.5%
@@ -148,12 +145,12 @@ class TradingBot:
                         if signal == "BUY":
                             await self.execute_trade("BUY", price, reason)
 
-                await asyncio.sleep(5)  # Checa a cada 5 segundos
+                await asyncio.sleep(4)  # Atualiza a cada 4 segundos
             except KeyboardInterrupt:
-                print("\n🛑 Robô finalizado pelo usuário.")
+                print("\n🛑 Robô finalizado com sucesso.")
                 break
             except Exception as e:
-                logger.error(f"Erro no loop de análise: {e}")
+                logger.error(f"Erro no ciclo de análise: {e}")
                 await asyncio.sleep(5)
 
         await self.exchange.close()
@@ -162,7 +159,7 @@ def main():
     parser = argparse.ArgumentParser(description="Robô de Trading de Criptomoedas")
     parser.add_argument("--symbol", type=str, default="BTC/USDT", help="Par de negociação (Ex: BTC/USDT)")
     parser.add_argument("--timeframe", type=str, default="1m", help="Tempo gráfico (Ex: 1m, 5m, 15m)")
-    parser.add_argument("--mode", type=str, default="paper", choices=["paper", "live"], help="Modo: paper (simulação) ou live (real)")
+    parser.add_argument("--mode", type=str, default="paper", choices=["paper", "live"], help="Modo: paper ou live")
 
     args = parser.parse_args()
     bot = TradingBot(symbol=args.symbol, timeframe=args.timeframe, mode=args.mode)
