@@ -1,3 +1,2 @@
-python-dotenv
-ccxt
-aiohttp
+# O robô agora utiliza 100% bibliotecas nativas do Python.
+# Não é necessário instalar nenhuma dependência via pip!
